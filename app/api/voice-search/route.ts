@@ -22,27 +22,53 @@ export async function POST(request: NextRequest) {
 
     // Create a prompt to extract job search keywords and location
     const prompt = `
-You are a job search assistant for a labor marketplace app called "Naukri Bandhu". 
-Analyze this voice query and extract relevant search keywords and location information.
+You are an advanced job search assistant for "Naukri Bandhu" labor marketplace app.
+Your job is to extract job search keywords and location from natural language queries.
 
 User said: "${transcript}"
 
-Please respond with a JSON object containing:
-1. "searchKeywords": Array of relevant job-related keywords (skills, job types, etc.)
-2. "location": Location mentioned (if any, otherwise null)
-3. "intent": Brief description of what the user is looking for
-4. "responseText": A natural response to speak back to the user
+INSTRUCTIONS:
+1. Extract job-related keywords from natural speech patterns
+2. Handle conversational queries like "Can I get a job in [location]?", "Any work in [area]?", "I need [job type] work"
+3. Use fuzzy location matching for common misspellings/variations
+4. Extract multiple job types if mentioned
+5. Be liberal with keyword extraction - better to include more than miss important ones
 
-Focus on these job categories: construction, painting, plumbing, electrical work, cleaning, gardening, moving, delivery, security, cooking, etc.
+JOB CATEGORIES (be flexible with variations):
+- construction, building, civil work, mason work, concrete work, site work
+- painting, wall painting, interior painting, exterior painting
+- plumbing, pipe work, water work, sanitary work, bathroom work
+- electrical, wiring, power work, electrical installation
+- cleaning, housekeeping, maintenance, sanitation
+- gardening, landscaping, plant work
+- hospital work, medical facility work, healthcare jobs
+- delivery, moving, transport, logistics
+- security, guard work, watchman
+- cooking, kitchen work, food preparation
 
-Common locations in Bangalore: Jayanagar, Yelahanka, Electronic City, Whitefield, Koramangala, BTM Layout, JP Nagar, Indiranagar, Marathahalli, etc.
+LOCATION FUZZY MATCHING:
+- "Ilanka", "Yelankha", "Yellanka" → "Yelahanka"
+- "Nagasaki", "Nagasandhra" → "Nagasandra"
+- "Kormangala", "Koramangla" → "Koramangala"
+- "Jaynagar", "Jayanagr" → "Jayanagar"
+- "Electronic", "Electroni City" → "Electronic City"
+- "Whitfield", "Whitefeld" → "Whitefield"
+- "BTM", "BTM Layout" → "BTM Layout"
+- "Marathalli", "Marathhalli" → "Marathahalli"
+- "Indranagar", "Indiranagar" → "Indiranagar"
 
-Example response:
+EXAMPLES:
+- "Can I get a job in Ilanka?" → {"searchKeywords": ["job", "work"], "location": "Yelahanka"}
+- "Any construction work near Electronic City?" → {"searchKeywords": ["construction", "building", "civil work"], "location": "Electronic City"}
+- "I need hospital jobs" → {"searchKeywords": ["hospital", "medical", "healthcare", "cleaning", "maintenance"], "location": null}
+- "Painting work in Jaynagar" → {"searchKeywords": ["painting", "wall painting"], "location": "Jayanagar"}
+
+Respond with JSON:
 {
-  "searchKeywords": ["construction", "painting"],
-  "location": "Yelahanka",
-  "intent": "Looking for construction or painting jobs in Yelahanka area",
-  "responseText": "I found some construction and painting jobs in Yelahanka. Let me show you the available opportunities."
+  "searchKeywords": ["relevant", "job", "keywords"],
+  "location": "Corrected Location Name or null",
+  "intent": "Understanding of what user wants",
+  "responseText": "Natural response to speak back"
 }
 `;
 
