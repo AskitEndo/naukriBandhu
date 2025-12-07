@@ -493,6 +493,230 @@ export const getJobById = async (jobId: string): Promise<JobListing | null> => {
   }
 };
 
+// --- DEBUG FUNCTION - Populate Demo Jobs ---
+export const populateDemoJobs = async (): Promise<void> => {
+  try {
+    console.log("🏗️ Creating demo jobs...");
+
+    const demoJobs = [
+      // Construction Jobs
+      {
+        title: "Construction Worker - Residential Building",
+        description:
+          "Need experienced construction workers for residential apartment construction. Work includes brick laying, cement mixing, and general construction support.",
+        workType: "Construction",
+        locationName: "Yelahanka, Bangalore",
+        locationDetails: "Near Yelahanka Railway Station, Bangalore North",
+        requiredDate: "2025-12-10",
+        startTime: "08:00",
+        endTime: "17:00",
+        durationHours: 9,
+        wageAmount: 800,
+        wageType: "daily" as const,
+        laborersRequired: 5,
+        supervisorId: "demo-supervisor-1",
+        supervisorName: "Rajesh Kumar",
+        supervisorPhone: "+91-9876543210",
+      },
+      {
+        title: "Building Construction Helper",
+        description:
+          "Construction helper needed for commercial building project. Basic construction work including material handling and site assistance.",
+        workType: "Construction",
+        locationName: "Electronic City, Bangalore",
+        locationDetails: "Electronic City Phase 1, Near Infosys Gate",
+        requiredDate: "2025-12-11",
+        startTime: "07:30",
+        endTime: "16:30",
+        durationHours: 9,
+        wageAmount: 750,
+        wageType: "daily" as const,
+        laborersRequired: 8,
+        supervisorId: "demo-supervisor-2",
+        supervisorName: "Suresh Reddy",
+        supervisorPhone: "+91-9876543211",
+      },
+      {
+        title: "Road Construction Work",
+        description:
+          "Road construction and maintenance work. Experience with concrete work preferred.",
+        workType: "Construction",
+        locationName: "Nagasandra, Bangalore",
+        locationDetails: "Nagasandra Metro Station area",
+        requiredDate: "2025-12-12",
+        startTime: "06:00",
+        endTime: "15:00",
+        durationHours: 9,
+        wageAmount: 850,
+        wageType: "daily" as const,
+        laborersRequired: 6,
+        supervisorId: "demo-supervisor-3",
+        supervisorName: "Mohan Singh",
+        supervisorPhone: "+91-9876543212",
+      },
+
+      // Painting Jobs
+      {
+        title: "House Painting Work",
+        description:
+          "Interior and exterior painting for residential house. Experience with brush and roller painting required.",
+        workType: "Painting",
+        locationName: "Jayanagar, Bangalore",
+        locationDetails: "Jayanagar 4th Block, Near Shopping Complex",
+        requiredDate: "2025-12-13",
+        startTime: "09:00",
+        endTime: "18:00",
+        durationHours: 9,
+        wageAmount: 700,
+        wageType: "daily" as const,
+        laborersRequired: 3,
+        supervisorId: "demo-supervisor-4",
+        supervisorName: "Venkatesh Pai",
+        supervisorPhone: "+91-9876543213",
+      },
+      {
+        title: "Office Painting Contract",
+        description:
+          "Commercial office space painting. Wall preparation and painting work.",
+        workType: "Painting",
+        locationName: "Whitefield, Bangalore",
+        locationDetails: "Whitefield Main Road, IT Park Area",
+        requiredDate: "2025-12-14",
+        startTime: "08:30",
+        endTime: "17:30",
+        durationHours: 9,
+        wageAmount: 750,
+        wageType: "daily" as const,
+        laborersRequired: 4,
+        supervisorId: "demo-supervisor-5",
+        supervisorName: "Prakash Nair",
+        supervisorPhone: "+91-9876543214",
+      },
+
+      // Plumbing Jobs
+      {
+        title: "Plumbing Installation Work",
+        description:
+          "Plumbing installation for new apartment complex. Pipe fitting and fixture installation.",
+        workType: "Plumbing",
+        locationName: "Koramangala, Bangalore",
+        locationDetails: "Koramangala 5th Block, Near Forum Mall",
+        requiredDate: "2025-12-15",
+        startTime: "08:00",
+        endTime: "17:00",
+        durationHours: 9,
+        wageAmount: 900,
+        wageType: "daily" as const,
+        laborersRequired: 2,
+        supervisorId: "demo-supervisor-6",
+        supervisorName: "Ravi Sharma",
+        supervisorPhone: "+91-9876543215",
+      },
+      {
+        title: "Hospital Plumbing Maintenance",
+        description:
+          "Plumbing maintenance work at hospital facility. Experience with hospital-grade fittings preferred.",
+        workType: "Plumbing",
+        locationName: "Nagasandra, Bangalore",
+        locationDetails: "Nagasandra Hospital Complex",
+        requiredDate: "2025-12-16",
+        startTime: "07:00",
+        endTime: "16:00",
+        durationHours: 9,
+        wageAmount: 950,
+        wageType: "daily" as const,
+        laborersRequired: 3,
+        supervisorId: "demo-supervisor-7",
+        supervisorName: "Lakshman Rao",
+        supervisorPhone: "+91-9876543216",
+      },
+
+      // Electrical Jobs
+      {
+        title: "Electrical Installation",
+        description:
+          "Electrical wiring and installation work for residential complex.",
+        workType: "Electrical",
+        locationName: "BTM Layout, Bangalore",
+        locationDetails: "BTM Layout 2nd Stage, Near Udupi Garden",
+        requiredDate: "2025-12-17",
+        startTime: "09:00",
+        endTime: "18:00",
+        durationHours: 9,
+        wageAmount: 1000,
+        wageType: "daily" as const,
+        laborersRequired: 2,
+        supervisorId: "demo-supervisor-8",
+        supervisorName: "Krishna Murthy",
+        supervisorPhone: "+91-9876543217",
+      },
+
+      // Cleaning Jobs
+      {
+        title: "Construction Site Cleaning",
+        description:
+          "Post-construction cleaning work. Site cleanup and debris removal.",
+        workType: "Cleaning",
+        locationName: "Marathahalli, Bangalore",
+        locationDetails: "Marathahalli Bridge, IT Corridor",
+        requiredDate: "2025-12-18",
+        startTime: "08:00",
+        endTime: "16:00",
+        durationHours: 8,
+        wageAmount: 600,
+        wageType: "daily" as const,
+        laborersRequired: 4,
+        supervisorId: "demo-supervisor-9",
+        supervisorName: "Ramesh Babu",
+        supervisorPhone: "+91-9876543218",
+      },
+
+      // Gardening Jobs
+      {
+        title: "Garden Landscaping Work",
+        description:
+          "Garden maintenance and landscaping for residential society.",
+        workType: "Gardening",
+        locationName: "Indiranagar, Bangalore",
+        locationDetails: "Indiranagar 12th Main Road",
+        requiredDate: "2025-12-19",
+        startTime: "07:00",
+        endTime: "15:00",
+        durationHours: 8,
+        wageAmount: 650,
+        wageType: "daily" as const,
+        laborersRequired: 3,
+        supervisorId: "demo-supervisor-10",
+        supervisorName: "Govind Prasad",
+        supervisorPhone: "+91-9876543219",
+      },
+    ];
+
+    const batch = writeBatch(db);
+
+    for (let i = 0; i < demoJobs.length; i++) {
+      const jobRef = doc(collection(db, "jobs"));
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + 7);
+
+      batch.set(jobRef, {
+        ...demoJobs[i],
+        status: "open",
+        isListed: true,
+        laborersApplied: Math.floor(Math.random() * 2), // 0-1 applied randomly
+        expiresAt: expirationDate.toISOString(),
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    console.log(`✅ Created ${demoJobs.length} demo jobs successfully!`);
+  } catch (error) {
+    console.error("❌ Error creating demo jobs:", error);
+    throw error;
+  }
+};
+
 // --- DEBUG FUNCTION - Reset All Data ---
 export const resetAllData = async (): Promise<void> => {
   try {

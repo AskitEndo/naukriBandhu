@@ -18,8 +18,10 @@ import {
   Users,
   ArrowRight,
   CheckCircle,
+  Mic,
 } from "lucide-react";
 import LoadingScreen from "@/components/LoadingScreen";
+import VoiceSearch from "@/components/VoiceSearch";
 
 // Helper to get day name
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -33,6 +35,10 @@ export default function LaborDashboard() {
   const [totalHours, setTotalHours] = useState(0);
   const [minWagePerHour, setMinWagePerHour] = useState(60);
   const [appliedJobs, setAppliedJobs] = useState<Set<string>>(new Set());
+  const [searchKeywords, setSearchKeywords] = useState<string[]>([]);
+  const [searchLocation, setSearchLocation] = useState<string | null>(null);
+  const [showVoiceSearch, setShowVoiceSearch] = useState(false);
+  const [searchTranscript, setSearchTranscript] = useState("");
 
   const [bookingStatus, setBookingStatus] = useState<{
     msg: string;
@@ -117,6 +123,40 @@ export default function LaborDashboard() {
     }
   };
 
+  const handleVoiceSearch = (keywords: string[], location: string | null) => {
+    setSearchKeywords(keywords);
+    setSearchLocation(location);
+    console.log("🔍 Voice search triggered:", { keywords, location });
+  };
+
+  const clearSearch = () => {
+    setSearchKeywords([]);
+    setSearchLocation(null);
+    setSearchTranscript("");
+  };
+
+  // Filter jobs based on search criteria
+  const filteredJobs = jobs.filter((job) => {
+    if (searchKeywords.length === 0 && !searchLocation) {
+      return true; // No search active, show all jobs
+    }
+
+    const jobText =
+      `${job.title} ${job.description} ${job.workType} ${job.locationName}`.toLowerCase();
+
+    // Check keywords match
+    const keywordMatch =
+      searchKeywords.length === 0 ||
+      searchKeywords.some((keyword) => jobText.includes(keyword.toLowerCase()));
+
+    // Check location match
+    const locationMatch =
+      !searchLocation ||
+      job.locationName.toLowerCase().includes(searchLocation.toLowerCase());
+
+    return keywordMatch && locationMatch;
+  });
+
   if (loading) return <LoadingScreen />;
 
   return (
@@ -157,11 +197,13 @@ export default function LaborDashboard() {
               {/* Available Jobs */}
               <div className="bg-linear-to-br from-green-50 to-green-100 p-4 rounded-2xl border border-green-200">
                 <div className="text-xs text-green-600 font-medium mb-1">
-                  Available
+                  {searchKeywords.length > 0 || searchLocation
+                    ? "Found"
+                    : "Available"}
                 </div>
                 <div className="text-xl font-bold text-green-700">
                   {
-                    jobs.filter(
+                    filteredJobs.filter(
                       (job) => job.laborersApplied < job.laborersRequired
                     ).length
                   }
@@ -181,10 +223,12 @@ export default function LaborDashboard() {
               {/* Total Jobs */}
               <div className="bg-linear-to-br from-orange-50 to-orange-100 p-4 rounded-2xl border border-orange-200">
                 <div className="text-xs text-orange-600 font-medium mb-1">
-                  Total Jobs
+                  {searchKeywords.length > 0 || searchLocation
+                    ? "Matching"
+                    : "Total Jobs"}
                 </div>
                 <div className="text-xl font-bold text-orange-700">
-                  {jobs.length}
+                  {filteredJobs.length}
                 </div>
               </div>
             </div>
@@ -193,6 +237,82 @@ export default function LaborDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Voice Search Section */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                🎤 Voice Job Search
+              </h2>
+              <button
+                onClick={() => setShowVoiceSearch(!showVoiceSearch)}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-xl border transition-all duration-200 ${
+                  showVoiceSearch
+                    ? "bg-blue-100 border-blue-300 text-blue-700"
+                    : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <Mic className="w-4 h-4" />
+                <span>
+                  {showVoiceSearch ? "Hide Voice Search" : "Show Voice Search"}
+                </span>
+              </button>
+            </div>
+
+            {showVoiceSearch && (
+              <VoiceSearch
+                onSearch={handleVoiceSearch}
+                onTranscriptChange={setSearchTranscript}
+                availableJobs={jobs}
+                lastSearchResultCount={filteredJobs.length}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Search Results Summary */}
+        {(searchKeywords.length > 0 || searchLocation) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-2">
+                  🔍 Search Results
+                </h3>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {searchKeywords.map((keyword, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                  {searchLocation && (
+                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                      📍 {searchLocation}
+                    </span>
+                  )}
+                </div>
+                <p className="text-blue-700 text-sm">
+                  Found {filteredJobs.length} job
+                  {filteredJobs.length !== 1 ? "s" : ""} matching your search
+                  {searchTranscript && (
+                    <span className="block text-blue-600 italic mt-1">
+                      "{searchTranscript}"
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={clearSearch}
+                className="px-3 py-1 text-blue-600 hover:text-blue-800 text-sm font-medium hover:bg-blue-100 rounded-lg transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Educational Banner */}
         <div className="bg-linear-to-r from-blue-600 via-cyan-600 to-blue-700 text-white p-6 rounded-2xl shadow-xl border border-blue-300 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-8 translate-x-8"></div>
@@ -351,34 +471,55 @@ export default function LaborDashboard() {
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold text-gray-800 font-poppins">
-              Available Jobs
+              {searchKeywords.length > 0 || searchLocation
+                ? "Search Results"
+                : "Available Jobs"}
             </h2>
             <p className="text-gray-600 mt-1">
-              Find opportunities that match your skills
+              {searchKeywords.length > 0 || searchLocation
+                ? "Jobs matching your voice search"
+                : "Find opportunities that match your skills"}
             </p>
           </div>
           <div className="bg-white px-4 py-2 rounded-xl shadow-sm border">
             <span className="text-sm text-gray-600">
-              {jobs.length} jobs available
+              {filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""}
+              {searchKeywords.length > 0 || searchLocation
+                ? " found"
+                : " available"}
             </span>
           </div>
         </div>
 
-        {jobs.length === 0 ? (
+        {filteredJobs.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-32 h-32 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-              <span className="text-4xl">💼</span>
+              <span className="text-4xl">
+                {searchKeywords.length > 0 || searchLocation ? "🔍" : "💼"}
+              </span>
             </div>
             <p className="text-xl text-gray-500 font-medium">
-              No jobs available right now
+              {searchKeywords.length > 0 || searchLocation
+                ? "No jobs found matching your search"
+                : "No jobs available right now"}
             </p>
             <p className="text-gray-400 mt-2">
-              Check back later for new opportunities
+              {searchKeywords.length > 0 || searchLocation
+                ? "Try different keywords or clear your search"
+                : "Check back later for new opportunities"}
             </p>
+            {(searchKeywords.length > 0 || searchLocation) && (
+              <button
+                onClick={clearSearch}
+                className="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors"
+              >
+                Clear Search
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid gap-8">
-            {jobs.map((job: JobListing) => {
+            {filteredJobs.map((job: JobListing) => {
               const hourlyRate =
                 job.wageType === "hourly"
                   ? job.wageAmount

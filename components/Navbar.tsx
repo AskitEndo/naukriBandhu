@@ -2,7 +2,12 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
-import { getUserProfile, updateUserRole, resetAllData } from "@/lib/firestore";
+import {
+  getUserProfile,
+  updateUserRole,
+  resetAllData,
+  populateDemoJobs,
+} from "@/lib/firestore";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Home,
@@ -105,6 +110,34 @@ export default function Navbar() {
   const handleLogout = async () => {
     await logout();
     router.push("/");
+  };
+
+  const handlePopulateDemoJobs = async () => {
+    const confirmPopulate = confirm(
+      "🏗️ DEMO DATA SETUP\n\n" +
+        "This will create sample jobs including:\n" +
+        "• Construction jobs in Yelahanka, Electronic City, Nagasandra\n" +
+        "• Painting jobs in Jayanagar, Whitefield\n" +
+        "• Plumbing jobs in Koramangala, Nagasandra (Hospital)\n" +
+        "• Electrical, Cleaning, and Gardening jobs\n" +
+        "\nPerfect for testing voice search!\n\n" +
+        "Proceed with creating demo jobs?"
+    );
+
+    if (!confirmPopulate) return;
+
+    try {
+      await populateDemoJobs();
+      alert(
+        "✅ Demo jobs created successfully! Ready for testing voice search."
+      );
+
+      // Refresh the page to show new jobs
+      window.location.reload();
+    } catch (error) {
+      console.error("Demo job creation failed:", error);
+      alert("❌ Failed to create demo jobs. Check console for details.");
+    }
   };
 
   const handleResetData = async () => {
@@ -305,6 +338,16 @@ export default function Navbar() {
                     <span>Switch to Labor</span>
                   </>
                 )}
+              </button>
+
+              {/* Demo Jobs - Debug Button */}
+              <button
+                onClick={handlePopulateDemoJobs}
+                className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 hover:border-green-300 transition-all duration-200 text-sm font-medium text-green-600 hover:text-green-700"
+                title="🏗️ Create Demo Jobs for Testing"
+              >
+                <Briefcase size={14} />
+                <span>Demo Jobs</span>
               </button>
 
               {/* Reset All Data - Debug Button */}
