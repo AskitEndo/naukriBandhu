@@ -184,7 +184,7 @@ export default function Navbar() {
               <Link href="/" className="flex items-center space-x-3 group">
                 <div className="relative">
                   <Image
-                    src="/logo.png"
+                    src="/logo.gif"
                     alt="Naukri Bandhu"
                     width={45}
                     height={45}
@@ -293,7 +293,7 @@ export default function Navbar() {
             <Link href="/" className="flex items-center space-x-3 group">
               <div className="relative">
                 <Image
-                  src="/logo.png"
+                  src="/logo.gif"
                   alt="Naukri Bandhu"
                   width={45}
                   height={45}
