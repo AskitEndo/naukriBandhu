@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
     // Create a prompt to extract job search keywords and location
     const prompt = `

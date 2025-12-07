@@ -452,6 +452,16 @@ export default function Navbar() {
                 )}
               </button>
 
+              {/* Demo Jobs - Debug Button */}
+              <button
+                onClick={handlePopulateDemoJobs}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 hover:border-green-300 transition-all duration-200 font-medium text-green-600 hover:text-green-700"
+                title="🏗️ Create Demo Jobs for Testing"
+              >
+                <Briefcase size={16} />
+                <span>🏗️ Demo Jobs</span>
+              </button>
+
               {/* Reset All Data - Debug Button */}
               <button
                 onClick={handleResetData}
