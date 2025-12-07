@@ -5,6 +5,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import { getSupervisorBookings } from "@/lib/firestore";
 import { Booking } from "@/types";
 import Link from "next/link";
+import LoadingScreen from "@/components/LoadingScreen";
 
 export default function SupervisorBookingsPage() {
   const { user } = useAuth();
@@ -20,7 +21,7 @@ export default function SupervisorBookingsPage() {
     }
   }, [user]);
 
-  if (loading) return <div className="p-8">Loading your hires...</div>;
+  if (loading) return <LoadingScreen />;
 
   return (
     <div className="p-4 md:p-8 min-h-screen bg-gray-50">

@@ -11,9 +11,17 @@ import {
   where,
   getDocs,
   orderBy,
+  updateDoc,
+  increment,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { UserProfile, SystemRates, JobListing, Booking } from "@/types";
+import {
+  UserProfile,
+  SystemRates,
+  JobListing,
+  Booking,
+  JobApplication,
+} from "@/types";
 
 // --- User Logic ---
 export const getUserProfile = async (
@@ -44,6 +52,14 @@ export const createUserProfile = async (
   );
 };
 
+export const updateUserRole = async (
+  uid: string,
+  role: "labor" | "supervisor"
+): Promise<void> => {
+  const userRef = doc(db, "users", uid);
+  await updateDoc(userRef, { role });
+};
+
 // --- System Config (Min Wage) ---
 export const getSystemRates = async (): Promise<SystemRates> => {
   const ref = doc(db, "system_config", "rates");
@@ -60,21 +76,73 @@ export const getSystemRates = async (): Promise<SystemRates> => {
 
 // --- Job Logic ---
 export const createJobPosting = async (
-  jobData: Omit<JobListing, "id" | "createdAt" | "status">
+  jobData: Omit<
+    JobListing,
+    "id" | "createdAt" | "status" | "isListed" | "laborersApplied"
+  >
 ) => {
+  // Calculate expiration date (default: 7 days from creation)
+  const expirationDate = new Date();
+  expirationDate.setDate(expirationDate.getDate() + 7);
+
   const jobsRef = collection(db, "jobs");
   await addDoc(jobsRef, {
     ...jobData,
     status: "open",
+    isListed: true,
+    laborersApplied: 0,
+    expiresAt: jobData.expiresAt || expirationDate.toISOString(),
     createdAt: serverTimestamp(),
   });
 };
 
+// --- JOB MANAGEMENT FUNCTIONS ---
+
+// Check and update expired jobs
+export const updateExpiredJobs = async () => {
+  const jobsRef = collection(db, "jobs");
+  const q = query(jobsRef, where("status", "==", "open"));
+  const snapshot = await getDocs(q);
+
+  const now = new Date();
+
+  snapshot.docs.forEach(async (docSnap) => {
+    const job = docSnap.data() as JobListing;
+    const expirationDate = new Date(job.expiresAt);
+
+    if (now > expirationDate) {
+      await setDoc(doc(db, "jobs", docSnap.id), {
+        ...job,
+        status: "expired",
+      });
+    }
+  });
+};
+
+// Toggle job listing status
+export const toggleJobListing = async (jobId: string, isListed: boolean) => {
+  const jobRef = doc(db, "jobs", jobId);
+  await setDoc(jobRef, { isListed }, { merge: true });
+};
+
+// Delete job posting
+export const deleteJobPosting = async (jobId: string) => {
+  const jobRef = doc(db, "jobs", jobId);
+  await setDoc(jobRef, { status: "delisted" }, { merge: true });
+};
+
 // --- JOB FEED LOGIC ---
 export const getOpenJobs = async (): Promise<JobListing[]> => {
+  // First update expired jobs
+  await updateExpiredJobs();
+
   const jobsRef = collection(db, "jobs");
-  // Get jobs that are 'open' (removed orderBy to avoid index requirement)
-  const q = query(jobsRef, where("status", "==", "open"));
+  // Get jobs that are 'open' and 'listed'
+  const q = query(
+    jobsRef,
+    where("status", "==", "open"),
+    where("isListed", "==", true)
+  );
 
   const snapshot = await getDocs(q);
   const jobs = snapshot.docs.map((doc) => ({
@@ -82,8 +150,11 @@ export const getOpenJobs = async (): Promise<JobListing[]> => {
     ...doc.data(),
   })) as JobListing[];
 
-  // Sort in JavaScript instead of Firestore to avoid index requirement
-  return jobs.sort((a, b) => {
+  // Filter out expired jobs and sort
+  const now = new Date();
+  const validJobs = jobs.filter((job) => new Date(job.expiresAt) > now);
+
+  return validJobs.sort((a, b) => {
     const aTime = a.createdAt?.toMillis?.() || 0;
     const bTime = b.createdAt?.toMillis?.() || 0;
     return bTime - aTime; // Sort desc (newest first)
@@ -145,16 +216,42 @@ export const getLaborWeeklyHours = async (
   return totalHours;
 };
 
-// --- BOOKING LOGIC ---
-export const bookJob = async (
+// --- APPLICATION LOGIC ---
+
+// Check if labor has already applied for a job
+export const hasAlreadyApplied = async (
+  jobId: string,
+  laborId: string
+): Promise<boolean> => {
+  const applicationsRef = collection(db, "job_applications");
+  const q = query(
+    applicationsRef,
+    where("jobId", "==", jobId),
+    where("laborId", "==", laborId)
+  );
+
+  const snapshot = await getDocs(q);
+  return !snapshot.empty;
+};
+
+// Apply for a job
+export const applyForJob = async (
   job: JobListing,
   laborId: string
 ): Promise<{ success: boolean; message: string }> => {
-  // 1. Run the Algorithm: Check current hours
+  // 1. Check if already applied
+  const alreadyApplied = await hasAlreadyApplied(job.id!, laborId);
+  if (alreadyApplied) {
+    return {
+      success: false,
+      message: "You have already applied for this job!",
+    };
+  }
+
+  // 2. Check weekly hours limit
   const currentHours = await getLaborWeeklyHours(laborId, job.requiredDate);
   const newTotal = currentHours + job.durationHours;
 
-  // 2. Validate Constraint
   if (newTotal > 50) {
     return {
       success: false,
@@ -162,31 +259,78 @@ export const bookJob = async (
     };
   }
 
-  // 3. Create Booking
+  // 3. Check if job is still available
+  if (job.laborersApplied >= job.laborersRequired) {
+    return {
+      success: false,
+      message: "Sorry, this job has reached its maximum number of applicants.",
+    };
+  }
+
+  // 4. Create application with automatic approval
   try {
-    const bookingRef = collection(db, "bookings");
+    const applicationRef = collection(db, "job_applications");
+    const applicationData: Omit<JobApplication, "id" | "appliedAt"> = {
+      jobId: job.id!,
+      laborId: laborId,
+      supervisorId: job.supervisorId,
+      status: "confirmed", // Auto-approve applications
+    };
+
+    const applicationDoc = await addDoc(applicationRef, {
+      ...applicationData,
+      appliedAt: serverTimestamp(),
+    });
+
+    // 5. Create booking immediately since it's auto-approved
     const bookingData: Omit<Booking, "id" | "createdAt"> = {
       jobId: job.id!,
       laborId: laborId,
       supervisorId: job.supervisorId,
       jobTitle: job.title,
-      locationName: job.locationName, // Include location
+      locationName: job.locationName,
       jobDate: job.requiredDate,
       durationHours: job.durationHours,
       wageAmount: job.wageAmount,
       status: "confirmed",
     };
 
-    await addDoc(bookingRef, {
+    const bookingsRef = collection(db, "bookings");
+    await addDoc(bookingsRef, {
       ...bookingData,
       createdAt: serverTimestamp(),
     });
 
-    return { success: true, message: "Job Booked Successfully!" };
+    // 6. Update job's applied count and check if job is full
+    const jobRef = doc(db, "jobs", job.id!);
+    const updatedAppliedCount = job.laborersApplied + 1;
+
+    await updateDoc(jobRef, {
+      laborersApplied: increment(1),
+      // Close job if capacity reached
+      ...(updatedAppliedCount >= job.laborersRequired && {
+        status: "filled",
+        isListed: false,
+      }),
+    });
+
+    return {
+      success: true,
+      message: "Job booked successfully! You're all set.",
+    };
   } catch (error) {
     console.error(error);
     return { success: false, message: "System error. Please try again." };
   }
+};
+
+// --- BOOKING LOGIC (Updated) ---
+export const bookJob = async (
+  job: JobListing,
+  laborId: string
+): Promise<{ success: boolean; message: string }> => {
+  // Use the new application system
+  return await applyForJob(job, laborId);
 };
 
 // --- BOOKING HISTORY QUERIES ---
@@ -237,4 +381,112 @@ export const getSupervisorBookings = async (
     const bTime = b.createdAt?.toMillis?.() || 0;
     return bTime - aTime;
   });
+};
+
+// Get all jobs posted by a supervisor
+export const getSupervisorJobs = async (
+  supervisorId: string
+): Promise<JobListing[]> => {
+  const jobsRef = collection(db, "jobs");
+  const q = query(jobsRef, where("supervisorId", "==", supervisorId));
+
+  const snapshot = await getDocs(q);
+  const jobs = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as JobListing[];
+
+  return jobs.sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() || 0;
+    const bTime = b.createdAt?.toMillis?.() || 0;
+    return bTime - aTime;
+  });
+};
+
+// Get applications for a specific job
+export const getJobApplications = async (
+  jobId: string
+): Promise<JobApplication[]> => {
+  const applicationsRef = collection(db, "job_applications");
+  const q = query(applicationsRef, where("jobId", "==", jobId));
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as JobApplication[];
+};
+
+// Accept/reject job application
+export const updateApplicationStatus = async (
+  applicationId: string,
+  status: "confirmed" | "rejected"
+): Promise<void> => {
+  const applicationRef = doc(db, "job_applications", applicationId);
+  await updateDoc(applicationRef, { status });
+
+  // If confirmed, create a booking
+  if (status === "confirmed") {
+    const applicationSnap = await getDoc(applicationRef);
+    if (applicationSnap.exists()) {
+      const application = applicationSnap.data() as JobApplication;
+      const jobRef = doc(db, "jobs", application.jobId);
+      const jobSnap = await getDoc(jobRef);
+
+      if (jobSnap.exists()) {
+        const job = jobSnap.data() as JobListing;
+
+        const bookingData: Omit<Booking, "id" | "createdAt"> = {
+          jobId: job.id!,
+          laborId: application.laborId,
+          supervisorId: job.supervisorId,
+          jobTitle: job.title,
+          locationName: job.locationName,
+          jobDate: job.requiredDate,
+          durationHours: job.durationHours,
+          wageAmount: job.wageAmount,
+          status: "confirmed",
+        };
+
+        const bookingsRef = collection(db, "bookings");
+        await addDoc(bookingsRef, {
+          ...bookingData,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
+  }
+};
+
+// Get all applications for a specific user (labor)
+export const getUserApplications = async (
+  laborId: string
+): Promise<JobApplication[]> => {
+  const applicationsRef = collection(db, "job_applications");
+  const q = query(
+    applicationsRef,
+    where("laborId", "==", laborId),
+    orderBy("appliedAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as JobApplication[];
+};
+
+// Get job by ID
+export const getJobById = async (jobId: string): Promise<JobListing | null> => {
+  const jobRef = doc(db, "jobs", jobId);
+  const jobSnap = await getDoc(jobRef);
+
+  if (jobSnap.exists()) {
+    return {
+      id: jobSnap.id,
+      ...jobSnap.data(),
+    } as JobListing;
+  } else {
+    return null;
+  }
 };

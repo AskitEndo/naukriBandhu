@@ -2,9 +2,24 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import { getOpenJobs, bookJob, getLaborBookings } from "@/lib/firestore";
+import {
+  getOpenJobs,
+  applyForJob,
+  getLaborBookings,
+  getSystemRates,
+  hasAlreadyApplied,
+} from "@/lib/firestore";
 import { JobListing, Booking } from "@/types";
 import Link from "next/link";
+import {
+  MapPin,
+  Clock,
+  CalendarDays,
+  Users,
+  ArrowRight,
+  CheckCircle,
+} from "lucide-react";
+import LoadingScreen from "@/components/LoadingScreen";
 
 // Helper to get day name
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -16,6 +31,8 @@ export default function LaborDashboard() {
   const [loading, setLoading] = useState(true);
   const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]); // Sun-Sat hours
   const [totalHours, setTotalHours] = useState(0);
+  const [minWagePerHour, setMinWagePerHour] = useState(60);
+  const [appliedJobs, setAppliedJobs] = useState<Set<string>>(new Set());
 
   const [bookingStatus, setBookingStatus] = useState<{
     msg: string;
@@ -30,9 +47,25 @@ export default function LaborDashboard() {
       const jobData = await getOpenJobs();
       setJobs(jobData);
 
-      // 2. Fetch Bookings to calculate Daily breakdown
+      // 2. Check which jobs user has already applied for
+      const appliedSet = new Set<string>();
+      for (const job of jobData) {
+        if (job.id) {
+          const hasApplied = await hasAlreadyApplied(job.id, user.uid);
+          if (hasApplied) {
+            appliedSet.add(job.id);
+          }
+        }
+      }
+      setAppliedJobs(appliedSet);
+
+      // 3. Fetch Bookings to calculate Daily breakdown
       const myBookings = await getLaborBookings(user.uid);
       calculateWeeklyVisuals(myBookings);
+
+      // 4. Fetch system rates for minimum wage
+      const systemRates = await getSystemRates();
+      setMinWagePerHour(systemRates.minWagePerHour);
 
       setLoading(false);
     };
@@ -63,14 +96,19 @@ export default function LaborDashboard() {
   };
 
   const handleApply = async (job: JobListing) => {
-    if (!user) return;
+    if (!user || !job.id) return;
     setBookingStatus(null);
     if (!confirm(`Apply for ${job.title}?`)) return;
 
-    const result = await bookJob(job, user.uid);
+    const result = await applyForJob(job, user.uid);
 
     if (result.success) {
       setBookingStatus({ msg: result.message, type: "success" });
+      // Add job to applied set
+      setAppliedJobs((prev) => new Set(prev).add(job.id!));
+      // Reload jobs to update applied count
+      const jobData = await getOpenJobs();
+      setJobs(jobData);
       // Reload to update graph
       const myBookings = await getLaborBookings(user.uid);
       calculateWeeklyVisuals(myBookings);
@@ -79,167 +117,502 @@ export default function LaborDashboard() {
     }
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <LoadingScreen />;
 
   return (
-    <div className="p-4 md:p-8 min-h-screen bg-gray-50 text-black">
-      {/* Header */}
-      <header className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-green-900">Naukri Bandu</h1>
-          <p className="text-sm text-gray-600">Labor Dashboard</p>
-        </div>
-        <button onClick={logout} className="text-sm text-red-600 underline">
-          Logout
-        </button>
-      </header>
+    <div className="min-h-screen bg-linear-to-br from-gray-50 to-blue-50 text-gray-900">
+      {/* Enhanced Header - Mobile Responsive */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start gap-6">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold gradient-text font-poppins">
+                Welcome Back, Worker! 👋
+              </h1>
+              <p className="text-base sm:text-lg text-gray-600 mt-2 font-medium">
+                Find your next opportunity with fair wages
+              </p>
+            </div>
 
-      {/* STEP 10: EDUCATIONAL BANNER (Top) */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 rounded-lg shadow-lg mb-8">
-        <h3 className="font-bold text-lg">📢 Know Your Rights!</h3>
-        <p className="text-sm opacity-90">
-          The government mandates minimum wages. If you are paid less than
-          displayed, verify with the supervisor. Also, never work more than 50
-          hours a week for your own safety.
-        </p>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full lg:w-auto">
+              {/* Weekly Progress */}
+              <div className="bg-linear-to-br from-blue-50 to-blue-100 p-4 rounded-2xl border border-blue-200">
+                <div className="text-xs text-blue-600 font-medium mb-1">
+                  Weekly Hours
+                </div>
+                <div
+                  className={`text-xl font-bold ${
+                    totalHours >= 50
+                      ? "text-red-600"
+                      : totalHours >= 40
+                      ? "text-orange-600"
+                      : "text-green-600"
+                  }`}
+                >
+                  {totalHours}/50
+                </div>
+              </div>
+
+              {/* Available Jobs */}
+              <div className="bg-linear-to-br from-green-50 to-green-100 p-4 rounded-2xl border border-green-200">
+                <div className="text-xs text-green-600 font-medium mb-1">
+                  Available
+                </div>
+                <div className="text-xl font-bold text-green-700">
+                  {
+                    jobs.filter(
+                      (job) => job.laborersApplied < job.laborersRequired
+                    ).length
+                  }
+                </div>
+              </div>
+
+              {/* Applied Jobs */}
+              <div className="bg-linear-to-br from-purple-50 to-purple-100 p-4 rounded-2xl border border-purple-200">
+                <div className="text-xs text-purple-600 font-medium mb-1">
+                  Applied
+                </div>
+                <div className="text-xl font-bold text-purple-700">
+                  {appliedJobs.size}
+                </div>
+              </div>
+
+              {/* Total Jobs */}
+              <div className="bg-linear-to-br from-orange-50 to-orange-100 p-4 rounded-2xl border border-orange-200">
+                <div className="text-xs text-orange-600 font-medium mb-1">
+                  Total Jobs
+                </div>
+                <div className="text-xl font-bold text-orange-700">
+                  {jobs.length}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* STEP 9: WEEKLY CALENDAR VISUALIZER */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border mb-8">
-        <div className="flex justify-between items-end mb-4">
-          <h2 className="font-bold text-gray-800">Your Week</h2>
-          <span
-            className={`font-bold ${
-              totalHours >= 50 ? "text-red-600" : "text-green-600"
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Educational Banner */}
+        <div className="bg-linear-to-r from-blue-600 via-cyan-600 to-blue-700 text-white p-6 rounded-2xl shadow-xl border border-blue-300 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-8 translate-x-8"></div>
+          <div className="relative z-10">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                <span className="text-2xl">📢</span>
+              </div>
+              <h3 className="font-bold text-xl font-poppins">
+                Know Your Rights!
+              </h3>
+            </div>
+            <p className="text-blue-100 leading-relaxed">
+              The government mandates minimum wages. If you are paid less than
+              displayed, verify with the supervisor. Remember:{" "}
+              <span className="font-semibold text-white">
+                never work more than 50 hours a week
+              </span>{" "}
+              for your own safety and wellbeing.
+            </p>
+          </div>
+        </div>
+
+        {/* Enhanced Weekly Calendar Visualizer */}
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 font-poppins">
+                Weekly Overview
+              </h2>
+              <p className="text-gray-600 mt-1">Track your work hours safely</p>
+            </div>
+            <div className="text-right">
+              <div
+                className={`text-3xl font-bold ${
+                  totalHours >= 50
+                    ? "text-red-600"
+                    : totalHours >= 40
+                    ? "text-orange-600"
+                    : "text-green-600"
+                }`}
+              >
+                {totalHours} / 50
+              </div>
+              <p className="text-sm text-gray-500">Hours this week</p>
+            </div>
+          </div>
+
+          {/* Enhanced Bar Chart */}
+          <div className="bg-gray-50 p-6 rounded-2xl mb-6">
+            <div className="flex justify-between items-end h-40 gap-3">
+              {weeklyData.map((hours, index) => {
+                const heightPercent = Math.max((hours / 12) * 100, 3);
+                const today = new Date().getDay();
+                const isToday = index === today;
+                return (
+                  <div
+                    key={index}
+                    className="flex flex-col items-center flex-1"
+                  >
+                    <div className="flex flex-col items-center justify-end h-32 w-full">
+                      <div
+                        className={`w-full rounded-t-lg transition-all duration-700 ease-out shadow-sm ${
+                          hours > 8
+                            ? "bg-linear-to-t from-red-400 to-red-500"
+                            : hours > 0
+                            ? "bg-linear-to-t from-green-400 to-green-500"
+                            : "bg-gray-200"
+                        } ${
+                          isToday ? "ring-2 ring-cyan-500 ring-opacity-50" : ""
+                        }`}
+                        style={{ height: `${heightPercent}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-3 text-center">
+                      <span
+                        className={`text-sm font-medium ${
+                          isToday ? "text-cyan-600" : "text-gray-600"
+                        }`}
+                      >
+                        {days[index]}
+                      </span>
+                      <div
+                        className={`text-lg font-bold ${
+                          hours > 8
+                            ? "text-red-600"
+                            : hours > 0
+                            ? "text-green-600"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {hours}h
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Progress indicators */}
+            <div className="flex justify-between text-xs text-gray-500 mt-4 px-2">
+              <span>0h</span>
+              <span>6h</span>
+              <span className="text-orange-600">8h (Safe limit)</span>
+              <span className="text-red-600">12h</span>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-green-500 rounded"></div>
+                <span className="text-sm text-gray-600">Safe hours</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 bg-red-500 rounded"></div>
+                <span className="text-sm text-gray-600">Overtime</span>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/labor/applications"
+              className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl"
+            >
+              View Applications
+            </Link>
+          </div>
+        </div>
+
+        {/* Feedback Message */}
+        {bookingStatus && (
+          <div
+            className={`p-6 rounded-2xl shadow-lg border-l-4 ${
+              bookingStatus.type === "success"
+                ? "bg-green-50 border-green-500 text-green-800"
+                : "bg-red-50 border-red-500 text-red-800"
             }`}
           >
-            {totalHours} / 50 Hours
-          </span>
-        </div>
-
-        {/* Bar Chart */}
-        <div className="flex justify-between items-end h-32 gap-2">
-          {weeklyData.map((hours, index) => {
-            // Calculate height percentage (max 12 hours per day for visual scaling)
-            const heightPercent = Math.min((hours / 12) * 100, 100);
-            return (
-              <div key={index} className="flex flex-col items-center w-full">
-                <div
-                  className={`w-full rounded-t ${
-                    hours > 8 ? "bg-red-400" : "bg-green-400"
-                  } transition-all duration-500`}
-                  style={{ height: `${heightPercent || 2}%` }} // 2% min height for visibility
-                ></div>
-                <span className="text-xs text-gray-500 mt-1">
-                  {days[index]}
-                </span>
-                <span className="text-xs font-bold">{hours}h</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4 text-center">
-          <Link
-            href="/dashboard/labor/bookings"
-            className="text-blue-600 text-sm underline"
-          >
-            View Schedule Details
-          </Link>
-        </div>
-      </div>
-
-      {/* Feedback Message */}
-      {bookingStatus && (
-        <div
-          className={`mb-6 p-4 rounded text-center font-bold ${
-            bookingStatus.type === "success"
-              ? "bg-green-200 text-green-900"
-              : "bg-red-200 text-red-900"
-          }`}
-        >
-          {bookingStatus.msg}
-        </div>
-      )}
-
-      {/* Job Listings */}
-      <h2 className="text-xl font-bold mb-4 text-gray-800">Available Jobs</h2>
-
-      {jobs.length === 0 ? (
-        <p className="text-gray-500 italic">No jobs available right now.</p>
-      ) : (
-        <div className="grid gap-6">
-          {jobs.map((job: JobListing) => (
-            <div
-              key={job.id}
-              className="bg-white p-6 rounded-lg shadow-md border border-gray-200"
-            >
-              {/* Header */}
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-bold text-lg text-gray-800">
-                    {job.title}
-                  </h3>
-                  <p className="text-green-600 font-semibold">{job.company}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-green-600">
-                    ₹{job.wageAmount}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {job.wageType === "daily" ? "per day" : "per hour"}
-                  </div>
-                </div>
-              </div>
-
-              {/* Job Details */}
-              <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                <div className="flex items-center text-gray-600">
-                  <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{job.locationName}</span>
-                </div>
-                <div className="flex items-center text-gray-600">
-                  <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{job.durationHours} hours</span>
-                </div>
-                <div className="flex items-center text-gray-600">
-                  <CalendarDays className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{job.requiredDate}</span>
-                </div>
-                <div className="flex items-center text-gray-600">
-                  <Users className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>Skilled work</span>
-                </div>
-              </div>
-
-              {/* Description */}
-              <p className="text-gray-700 text-sm mb-4 leading-relaxed">
-                {job.description}
-              </p>
-
-              {/* Apply Button */}
-              <button
-                onClick={() => handleApply(job)}
-                disabled={loading || totalHours >= 45}
-                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 
-                           text-white font-semibold py-3 px-4 rounded-lg 
-                           transition duration-200 disabled:cursor-not-allowed"
+            <div className="flex items-center space-x-3">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  bookingStatus.type === "success"
+                    ? "bg-green-500"
+                    : "bg-red-500"
+                }`}
               >
-                {loading ? "Applying..." : "Apply Now"}
-              </button>
-
-              {/* Safety Warning */}
-              {totalHours >= 45 && (
-                <div className="mt-3 bg-orange-50 border border-orange-200 rounded-lg p-3">
-                  <p className="text-orange-800 text-sm">
-                    🛡️ Cannot apply - You're approaching the 50-hour weekly
-                    safety limit
-                  </p>
-                </div>
-              )}
+                <span className="text-white text-sm">
+                  {bookingStatus.type === "success" ? "✓" : "!"}
+                </span>
+              </div>
+              <p className="font-medium">{bookingStatus.msg}</p>
             </div>
-          ))}
+          </div>
+        )}
+
+        {/* Job Listings Section Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800 font-poppins">
+              Available Jobs
+            </h2>
+            <p className="text-gray-600 mt-1">
+              Find opportunities that match your skills
+            </p>
+          </div>
+          <div className="bg-white px-4 py-2 rounded-xl shadow-sm border">
+            <span className="text-sm text-gray-600">
+              {jobs.length} jobs available
+            </span>
+          </div>
         </div>
-      )}
+
+        {jobs.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="w-32 h-32 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
+              <span className="text-4xl">💼</span>
+            </div>
+            <p className="text-xl text-gray-500 font-medium">
+              No jobs available right now
+            </p>
+            <p className="text-gray-400 mt-2">
+              Check back later for new opportunities
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-8">
+            {jobs.map((job: JobListing) => {
+              const hourlyRate =
+                job.wageType === "hourly"
+                  ? job.wageAmount
+                  : job.wageAmount / job.durationHours;
+              const isAboveMinimum = hourlyRate >= minWagePerHour;
+              const isFullyBooked = job.laborersApplied >= job.laborersRequired;
+              const hasApplied = job.id ? appliedJobs.has(job.id) : false;
+
+              return (
+                <div
+                  key={job.id}
+                  className="group bg-white p-8 rounded-3xl shadow-lg hover:shadow-2xl border border-gray-100 hover:border-cyan-200 transition-all duration-500 relative overflow-hidden"
+                >
+                  {/* Background decoration */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-cyan-50 to-blue-50 rounded-full -translate-y-8 translate-x-8 group-hover:scale-110 transition-transform duration-500"></div>
+
+                  {/* Header */}
+                  <div className="flex justify-between items-start mb-6 relative z-10">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-2xl font-bold text-gray-800 font-poppins group-hover:text-cyan-700 transition-colors duration-300">
+                          {job.title}
+                        </h3>
+                        {isAboveMinimum && (
+                          <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-medium">
+                            Fair Wage
+                          </span>
+                        )}
+                        {hasApplied && (
+                          <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-medium">
+                            ✓ Applied
+                          </span>
+                        )}
+                      </div>
+                      {job.company && (
+                        <p className="text-cyan-600 font-semibold text-lg">
+                          {job.company}
+                        </p>
+                      )}
+                      <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                        <div className="flex items-center space-x-1">
+                          <MapPin className="w-4 h-4" />
+                          <span>{job.locationName}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <CalendarDays className="w-4 h-4" />
+                          <span>
+                            {new Date(job.requiredDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right ml-6">
+                      <div className="bg-linear-to-br from-green-400 to-green-600 text-white px-4 py-2 rounded-2xl shadow-lg">
+                        <div className="text-2xl font-bold">
+                          ₹{job.wageAmount}
+                        </div>
+                        <div className="text-sm opacity-90">
+                          {job.wageType === "daily" ? "per day" : "per hour"}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-600">
+                        ₹{hourlyRate.toFixed(2)}/hour
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Job Details Grid */}
+                  <div className="grid grid-cols-2 gap-6 mb-6 relative z-10">
+                    <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-cyan-50 transition-colors duration-300">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                          <Clock className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Duration</p>
+                          <p className="font-semibold text-gray-800">
+                            {job.durationHours} hours
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-cyan-50 transition-colors duration-300">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                          <Users className="w-5 h-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Applications</p>
+                          <p className="font-semibold text-gray-800">
+                            {job.laborersApplied}/{job.laborersRequired}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wage Comparison */}
+                  <div
+                    className={`mb-6 p-4 rounded-2xl border-2 transition-colors duration-300 ${
+                      isAboveMinimum
+                        ? "bg-green-50 border-green-200 group-hover:bg-green-100"
+                        : "bg-red-50 border-red-200 group-hover:bg-red-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-medium text-gray-700">
+                        Wage Analysis
+                      </span>
+                      <div
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          isAboveMinimum
+                            ? "bg-green-500 text-white"
+                            : "bg-red-500 text-white"
+                        }`}
+                      >
+                        {isAboveMinimum ? "✓ Fair" : "⚠ Check"}
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Offered rate:</span>
+                        <span className="font-semibold">
+                          ₹{hourlyRate.toFixed(2)}/hour
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Minimum wage:</span>
+                        <span className="font-semibold">
+                          ₹{minWagePerHour}/hour
+                        </span>
+                      </div>
+                      <div
+                        className={`mt-2 p-2 rounded-lg ${
+                          isAboveMinimum
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {isAboveMinimum
+                          ? `✓ This job pays ₹${(
+                              hourlyRate - minWagePerHour
+                            ).toFixed(2)} above minimum wage`
+                          : `⚠️ This job pays ₹${(
+                              minWagePerHour - hourlyRate
+                            ).toFixed(2)} below minimum wage`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="mb-6 relative z-10">
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Job Description
+                    </h4>
+                    <p className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-xl group-hover:bg-cyan-50 transition-colors duration-300">
+                      {job.description}
+                    </p>
+                  </div>
+
+                  {/* Apply Button */}
+                  <button
+                    onClick={() => handleApply(job)}
+                    disabled={
+                      loading || totalHours >= 45 || isFullyBooked || hasApplied
+                    }
+                    className={`w-full font-semibold py-4 px-6 rounded-2xl transition-all duration-300 relative z-10 ${
+                      hasApplied
+                        ? "bg-blue-100 text-blue-700 cursor-not-allowed border-2 border-blue-200"
+                        : isFullyBooked
+                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                        : loading || totalHours >= 45
+                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                        : "bg-linear-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl hover:scale-105"
+                    }`}
+                  >
+                    <div className="flex items-center justify-center space-x-2">
+                      {loading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Applying...</span>
+                        </>
+                      ) : hasApplied ? (
+                        <>
+                          <CheckCircle size={18} />
+                          <span>Already Applied</span>
+                        </>
+                      ) : isFullyBooked ? (
+                        <>
+                          <span>Position Filled</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Apply Now</span>
+                          <ArrowRight size={18} />
+                        </>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Warnings */}
+                  {totalHours >= 45 && (
+                    <div className="mt-4 bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl relative z-10">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm">🛡️</span>
+                        </div>
+                        <p className="text-orange-800 font-medium">
+                          Cannot apply - You're approaching the 50-hour weekly
+                          safety limit
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {isFullyBooked && (
+                    <div className="mt-4 bg-gray-50 border-l-4 border-gray-400 p-4 rounded-r-xl relative z-10">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm">📋</span>
+                        </div>
+                        <p className="text-gray-600 font-medium">
+                          This position has reached maximum applicants (
+                          {job.laborersRequired})
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

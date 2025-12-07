@@ -16,6 +16,7 @@ export interface JobListing {
   id?: string;
   supervisorId: string;
   title: string;
+  company?: string; // Optional company name
   locationName: string; // "Jalali West"
   description: string;
 
@@ -26,9 +27,24 @@ export interface JobListing {
   // Time Logic
   requiredDate: string; // ISO String or Timestamp
   durationHours: number; // e.g., 8 hours
+  expiresAt: string; // Job expiration date
 
-  status: "open" | "closed";
+  // Labor Requirements
+  laborersRequired: number; // Number of laborers needed
+  laborersApplied: number; // Number of laborers who have applied
+
+  status: "open" | "closed" | "expired" | "delisted";
+  isListed: boolean; // Whether the job is currently listed
   createdAt: any;
+}
+
+export interface JobApplication {
+  id?: string;
+  jobId: string;
+  laborId: string;
+  supervisorId: string;
+  status: "pending" | "confirmed" | "rejected";
+  appliedAt: any;
 }
 
 export interface Booking {
