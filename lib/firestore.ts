@@ -13,6 +13,8 @@ import {
   orderBy,
   updateDoc,
   increment,
+  deleteDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import {
@@ -488,5 +490,58 @@ export const getJobById = async (jobId: string): Promise<JobListing | null> => {
     } as JobListing;
   } else {
     return null;
+  }
+};
+
+// --- DEBUG FUNCTION - Reset All Data ---
+export const resetAllData = async (): Promise<void> => {
+  try {
+    const collectionsToReset = ["jobs", "bookings", "job_applications"];
+
+    console.log("🗑️ Starting database reset...");
+
+    for (const collectionName of collectionsToReset) {
+      const collectionRef = collection(db, collectionName);
+      const snapshot = await getDocs(collectionRef);
+
+      if (!snapshot.empty) {
+        // Use batch deletion for efficiency
+        const batch = writeBatch(db);
+
+        snapshot.docs.forEach((docSnapshot) => {
+          batch.delete(docSnapshot.ref);
+        });
+
+        await batch.commit();
+        console.log(
+          `✅ Cleared ${snapshot.docs.length} documents from ${collectionName}`
+        );
+      } else {
+        console.log(`✅ Collection ${collectionName} was already empty`);
+      }
+    }
+
+    // Reset user roles but keep user profiles
+    const usersRef = collection(db, "users");
+    const usersSnapshot = await getDocs(usersRef);
+
+    if (!usersSnapshot.empty) {
+      const batch = writeBatch(db);
+
+      usersSnapshot.docs.forEach((userDoc) => {
+        batch.update(userDoc.ref, {
+          // Reset to default role if needed
+          // Keep other profile data intact
+        });
+      });
+
+      await batch.commit();
+      console.log(`✅ Reset user data for ${usersSnapshot.docs.length} users`);
+    }
+
+    console.log("🎉 Database reset complete! All data cleared.");
+  } catch (error) {
+    console.error("❌ Error resetting database:", error);
+    throw error;
   }
 };

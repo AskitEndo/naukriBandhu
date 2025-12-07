@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
-import { getUserProfile, updateUserRole } from "@/lib/firestore";
+import { getUserProfile, updateUserRole, resetAllData } from "@/lib/firestore";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Home,
@@ -16,6 +16,7 @@ import {
   Users,
   Briefcase,
   LogOut,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -104,6 +105,40 @@ export default function Navbar() {
   const handleLogout = async () => {
     await logout();
     router.push("/");
+  };
+
+  const handleResetData = async () => {
+    const confirmReset = confirm(
+      "⚠️ DANGER: This will DELETE ALL data from the database!\n\n" +
+        "This includes:\n" +
+        "• All job postings\n" +
+        "• All applications\n" +
+        "• All bookings\n" +
+        "\nThis action CANNOT be undone!\n\n" +
+        "Are you absolutely sure you want to reset everything?"
+    );
+
+    if (!confirmReset) return;
+
+    const doubleConfirm = confirm(
+      "🚨 FINAL WARNING 🚨\n\n" +
+        "You are about to permanently delete ALL data!\n" +
+        "Type 'RESET' in your mind if you're really sure.\n\n" +
+        "Click OK to proceed with the reset."
+    );
+
+    if (!doubleConfirm) return;
+
+    try {
+      await resetAllData();
+      alert("✅ Database reset successfully! All data has been cleared.");
+
+      // Refresh the page to reflect changes
+      window.location.reload();
+    } catch (error) {
+      console.error("Reset failed:", error);
+      alert("❌ Failed to reset database. Check console for details.");
+    }
   };
 
   if (!user) {
@@ -272,6 +307,16 @@ export default function Navbar() {
                 )}
               </button>
 
+              {/* Reset All Data - Debug Button */}
+              <button
+                onClick={handleResetData}
+                className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all duration-200 text-sm font-medium text-red-600 hover:text-red-700"
+                title="⚠️ Reset All Database Data"
+              >
+                <Trash2 size={14} />
+                <span>Reset All</span>
+              </button>
+
               {/* Logout */}
               <button
                 onClick={handleLogout}
@@ -362,6 +407,15 @@ export default function Navbar() {
                     <span>Switch to Labor</span>
                   </>
                 )}
+              </button>
+
+              {/* Reset All Data - Debug Button */}
+              <button
+                onClick={handleResetData}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-all duration-200 font-medium text-red-600 hover:text-red-700"
+              >
+                <Trash2 size={16} />
+                <span>🗑️ Reset All Data</span>
               </button>
 
               {/* Logout */}
